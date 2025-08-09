@@ -1,16 +1,33 @@
-import csv
-import os
+# modules/logger_module.py
+import csv, os, tempfile, shutil
+from datetime import datetime
+
 class OutreachLogger:
-    def __init__(self, filename='outreach_log.csv'):
-        self.filename = filename
-        if not os.path.exists(self.filename):
-            with open(self.filename, 'w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(['url', 'email'])
-    def log(self, url, email):
-        with open(self.filename, 'a', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([url, email])
-    def is_logged(self, url):
-        with open(self.filename, 'r') as f:
-            return any(row[0] == url for row in csv.reader(f))
+    def __init__(self, path='outreach_log.csv'):
+        self.path = path
+        if not os.path.exists(self.path):
+            with open(self.path, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=['timestamp','url','contact','subject','status'])
+                writer.writeheader()
+
+    def already_processed(self, url):
+        try:
+            with open(self.path, newline='', encoding='utf-8') as f:
+                for row in csv.DictReader(f):
+                    if row.get('url') == url:
+                        return True
+        except FileNotFoundError:
+            return False
+        return False
+
+    def record(self, url, contact='', subject='', status=''):
+        timestamp = datetime.utcnow().isoformat()
+        row = {'timestamp': timestamp, 'url': url, 'contact': contact, 'subject': subject, 'status': status}
+        fd, tmp = tempfile.mkstemp(prefix='outreach_', suffix='.csv')
+        os.close(fd)
+        if os.path.exists(self.path):
+            shutil.copyfile(self.path, tmp)
+        with open(tmp, 'a', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=['timestamp','url','contact','subject','status'])
+            writer.writerow(row)
+        os.replace(tmp, self.path)

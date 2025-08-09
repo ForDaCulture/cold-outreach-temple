@@ -1,0 +1,12 @@
+{{ 'Free website overhaul offer for ' + (lead.title or lead.url) }}
+
+Hi {{ contacts.jsonld[0].get('name') if contacts.jsonld else (lead.title or 'there') }},
+
+I visited {{ lead.url }} and noticed a few things that may be holding back bookings and revenue:
+
+{{ pain_text or 'No obvious pain points identified in a quick scan.' }}
+
+I'd like to offer a free mini redesign that demonstrates how a focused overhaul can increase conversions — a 2-hour redesign sample at no cost.
+
+If you'd like, I can prepare this free redesign and share a before/after within 5 business days.
+

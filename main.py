@@ -1,42 +1,58 @@
+#!/usr/bin/env python3
 import argparse
+import logging
+import os
+import csv
+from datetime import datetime
+from dotenv import load_dotenv
+
 from modules.lead_discovery import discover_leads
-from modules.scraper import scrape_website
-from modules.contact_extractor import extract_contacts
-from modules.pain_finder import find_pain_points
-from modules.email_generator import generate_email
-from modules.sender import send_email
-from modules.logger_module import OutreachLogger
-from modules.history_manager import HistoryManager
+from modules.scrapfly_helper import scrapfly_fetch
 
-def main():
-    parser = argparse.ArgumentParser(description="Cold Email Analyzer with history recall")
-    parser.add_argument("--city", required=True)
-    parser.add_argument("--category", required=True)
-    parser.add_argument("--max", type=int, default=8)
-    parser.add_argument("--delay", type=float, default=1.5)
-    parser.add_argument("--resume", action="store_true")
-    parser.add_argument("--recall-history", type=int, default=0)
-    args = parser.parse_args()
+load_dotenv()
 
-    logger = OutreachLogger()
-    history = HistoryManager()
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
 
-    recalled_runs = []
-    if args.recall_history > 0:
-        recalled_runs = history.get_recent_runs(args.recall_history)
-
-    leads = discover_leads(args.city, args.category, args.max)
-    for lead in leads:
-        if args.resume and logger.is_logged(lead['url']):
-            continue
-        content = scrape_website(lead['url'])
-        contacts = extract_contacts(content)
-        pain_points = find_pain_points(content)
-        email_text = generate_email(lead, contacts, pain_points, recalled_runs)
-        print(email_text)
-        send_email(contacts.get('email'), email_text)
-        logger.log(lead['url'], contacts.get('email'))
-        history.save_run(lead, pain_points)
+def save_csv(leads, filename="leads.csv"):
+    with open(filename, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["timestamp", "url", "contact", "subject", "status"])
+        writer.writeheader()
+        for lead in leads:
+            writer.writerow({
+                "timestamp": datetime.utcnow().isoformat(),
+                "url": lead.get("url"),
+                "contact": lead.get("contact", ""),
+                "subject": lead.get("subject", ""),
+                "status": lead.get("status", "")
+            })
+    logging.info(f"Saved {len(leads)} leads to {filename}")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--city", required=True, help="City or location for search")
+    parser.add_argument("--category", required=True, help="Business category to search for")
+    parser.add_argument("--max", type=int, default=10, help="Max leads to fetch")
+    parser.add_argument("--recall-history", type=int, default=0, help="Recall from previous searches")
+    parser.add_argument("--dry-run", action="store_true", help="Run without sending emails")
+    parser.add_argument("--filter-aggregators", action="store_true", help="Filter out government and large aggregator sites")
+    parser.add_argument("--use-maps", action="store_true", help="Use Google Maps engine via SerpApi")
+    args = parser.parse_args()
+
+    logging.info(f"🔎 Discovering {args.category} in {args.city}")
+
+    leads = discover_leads(
+        args.city,
+        args.category,
+        max_results=args.max,
+        filter_aggregators=args.filter_aggregators,
+        use_maps=args.use_maps
+    )
+
+    if not leads:
+        logging.warning("No leads found. Try adjusting search parameters.")
+        exit()
+
+    save_csv(leads)

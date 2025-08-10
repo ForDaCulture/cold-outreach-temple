@@ -1,25 +1,31 @@
 # modules/serp_proxy.py
-import requests, logging
+import os, requests, logging
+from tenacity import retry, stop_after_attempt, wait_exponential
 
-def scrapfly_fetch(url, api_key, render=True, timeout=30):
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+def scrapfly_fetch(url, render_js=True, asp=True, timeout=30):
     """
-    Call Scrapfly scrape endpoint. Set render=True to execute JS.
-    Returns dict {'html': ...} on success or None on failure.
+    Upgrades: Merged with scrapfly_helper.py, added retries, env check early,
+    consistent dict return, asp param from helper.
     """
-    try:
-        params = {'key': api_key, 'url': url, 'render': 'true' if render else 'false'}
-        r = requests.get("https://api.scrapfly.io/scrape/", params=params, timeout=timeout)
-        r.raise_for_status()
-        return {'html': r.text}
-    except Exception as e:
-        logging.debug("Scrapfly fetch failed: %s", e)
-        return None
+    key = os.getenv("SCRAPFLY_KEY")
+    if not key:
+        raise RuntimeError("SCRAPFLY_KEY not set in .env")
+    params = {
+        "key": key,
+        "url": url,
+        "render_js": str(render_js).lower(),
+        "asp": str(asp).lower()
+    }
+    r = requests.get("https://api.scrapfly.io/scrape", params=params, timeout=timeout)
+    r.raise_for_status()
+    return {'html': r.text}
 
-def scraperapi_fetch(url, api_key, timeout=20):
-    try:
-        r = requests.get(f"http://api.scraperapi.com?api_key={api_key}&url={url}", timeout=timeout)
-        r.raise_for_status()
-        return {'html': r.text}
-    except Exception as e:
-        logging.debug("ScraperAPI fetch failed: %s", e)
-        return None
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+def scraperapi_fetch(url, timeout=20):
+    key = os.getenv("SCRAPERAPI_KEY")
+    if not key:
+        raise RuntimeError("SCRAPERAPI_KEY not set in .env")
+    r = requests.get(f"http://api.scraperapi.com?api_key={key}&url={url}", timeout=timeout)
+    r.raise_for_status()
+    return {'html': r.text}
